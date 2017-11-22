@@ -1,0 +1,182 @@
+配置IP
+	网络NAT模式，ipv4设置为manual模式，域名设为本机ipv4地址，前三位不变，最后一位任意
+	网关照ifconfig中网关设置，子网掩码和域名设置一样，最后一位改为1（常用方法）
+
+防火墙：（需root权限）
+	关闭防火墙：service iptables stop
+	关闭开机启动：chconfig iptables off
+	
+配置/etc/sudoers : username ALL=(root)NOPASSWD:ALL
+
+配置hosts文件完成主机与虚拟机的映射
+	linux：/etc/hosts
+	windows:C:\Windows\System32\drivers\etc\hosts
+	
+JDK配置
+	* 删除虚拟机自带的jdk
+		rpm -qa|grep java	//查看本机此时和java相关设置
+		rpm -e --nodeps 加上行命令的输出结果	//删除Java相关配置
+	* 重新安装配置JAVA_HOME
+		/etc/profile 增加：JAVA_HOME=jdk安装目录
+		source /etc/profile
+	
+安装Hadoop,进入hadoop安装目录下：
+	etc/hadoop/hadoop-env.sh 将其中JAVA_HOME设置为jdk安装目录
+	* 配置etc/hadoop/core-site.xml
+		<configuration>
+			<property>
+				<name>fs.defaultFS</name>
+				<value>hdfs://hostname:8020</value>
+			</property>
+			<property>
+				<name>hadoop.tmp.dir</name>
+				<value>(hadoop安装目录)/data/tmp</value>
+			</property>
+		</configuration>
+	* 配置etc/hadoop/hdfs-site.xml
+		<configuration>
+			<property>
+				<name>dfs.replication</name>
+				<value>1</value>
+			</property>
+			<property>         //此处配置的是SecondaryNameNode
+				<name>dfs.namenode.secondary.http-address</name> 
+				<value>hostname:50090</value>
+			</property>
+		</configuration>
+	* 配置slaves  etc/hadoop/slaves
+		加入内容：hostname
+		
+	* 启动hdfs：  bin/hdfs namednode -format   // format the DFS filesystem
+			sbin/hadoop-daemon.sh start namenode
+			sbin/hadoop-daemon.sh start datanode
+			jps
+			bin/hdfs dfs -mkdir -p /user/beifeng/       //创建用户文件夹
+		启动hdfs可视化界面：浏览器中输入 hostname:50070		// 启动NameNode和DataNode之后可视化界面就可以打开了
+	* 运行示例程序
+		bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.5.2.j
+		ar wordcount /user/zdp/mapreduce/wordcount/input /user/zdp/mapreduce/wordc
+		ount/output
+		出现权限不够情况：sudo加权限chmod rwx 
+		
+配置YARN：etc/hadoop/yarn-site.xml   //resourcemanager、nodemanager
+	<configuration>
+		<!-- Site specific YARN configuration properties -->
+		<property>
+			<name>yarn.nodemanager.aux-services</name>
+			<value>mapreduce_shuffle</value>
+		</property>
+		<property>
+			<name>yarn.resourcemanager.hostname</name>
+			<value>hostname</value>
+		</property>
+	</configuration>
+	* 启动yarn：
+		sbin/yarn-daemon.sh start resourcemanager
+		sbin/yarn-daemon.sh start nodemanager
+		可视化界面：http://hostname:8088
+	* 历史服务器：
+		* 配置 etc/hadoop/mapred-site.xml
+			<property>
+				<name>mapreduce.jobhistory.address</name>
+				<value>hostname:10020</value>
+			</property>
+			<property>
+				<name>mapreduce.jobhistory.webapp.address</name>
+				<value>hostname:19888</value>
+			</property>
+		* 启动
+			sbin/mr-jobhistory-daemon.sh start historyserver
+		* WEU-UI:
+			http://hostname:19888/
+		* 关闭
+			sbin/mr-jobhistory-daemon.sh stop historyserver
+	* Log Aggregation日志聚集功能：
+		将应用运行完成以后将日志信息上传到HDFS系统上，
+		* 配置：etc/hadoop/yarn-site.xml
+		加入如下内容：
+			<property>
+				<name>yarn.log-aggregation-enable</name>
+				<value>true</value>
+			</property>
+			<property>
+				<name>yarn.log-aggregation.retain-seconds</name>
+				<value>604800</value>
+				<!-- 604800 equals 7*24*60*60 -->
+			</property>
+			
+配置文件：
+		* 默认配置文件：相对应的JAR包中
+			* core-default.xml
+			* hdfs-default.xml
+			* yarn-default.xml
+			* mapred-default.xml
+		* 自定义配置文件 $HADOOP_HOME/etc/hadoop/
+			* core-site.xml
+			* hdfs-site.xml
+			* yarn-site.xml
+			* mapred-site.xml
+			
+启动方式：
+	* 各个组件逐一启动
+		* hdfs
+			hadoop-daemon.sh start|stop namenode|datanode|secondarynamenode
+		* yarn
+			yarn-daemon.sh start|stop resourcemanager|nodemanager
+		* mapreduce
+			mr-jobhistory-daemon.sh start|stop historyserver
+	* 各个模块分开启动（需要配置ssh无密码登录）
+		* hdfs
+			start-dfs.sh
+			stop-dfs.sh
+		* yarn
+			start-hdfs.sh
+			stop-dfs.sh
+	* 全部启动(不推荐使用)
+		* start-all.sh
+		* stop-all.sh
+			
+配置无密码登录：
+	cd ~
+	cd .ssh/
+	ssh-keygen -t rsa   // 连着四个回车，到此生成公钥
+	ssh-copy-id hostname  
+	ssh hostname  // 无密码登录主机
+	exit // 退出
+	
+设置hadoop全局执行命令：
+	nano /etc/profile 加入如下内容：
+		export HADOOP_HOME={hadoop安装目录}
+		export PATH=$HADOOP_HOME/bin  
+	source /etc/profile
+  
+  
+##Eclipse配置Hadoop环境
+Eclipse配置：
+	* 安装Maven、Eclipse、替换Repository	
+		* settings.xml和repository配置时是针对用户的，若权限配置不到位的情况下，
+			最好给root用户若权限配置不到位的情况下，最好给root用户同样配置settings.xml和repository
+		mkdir ~/.m2/
+		
+	* 进入eclipse->windows->preference界面：
+		* 更改快捷键（可选）
+		* 配置Maven：
+			Maven->Installations 替换为之前安装的目录
+			Maven->User Settings 自动找之前配置的settings.xml文件 
+		新建Maven Porject：main下面新建一个resources文件夹
+		building path为resources指定输出文件夹放在target/classes下
+		* 配置pom.xml文件:
+			删除原来最后的<dependency></dependency>,参照加入如下内容：
+			<dependency>
+				<groupId>org.apache.hadoop</groupId>
+				<artifactId>hadoop-client</artifactId>
+				<version>${hadoop.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>junit</groupId>
+				<artifactId>junit</artifactId>
+				<version>4.10</version>
+			</dependency>
+			在上边<properties></properties>中加入如下：
+				<hadoop.version>2.5.0</hadoop.version>
+				
